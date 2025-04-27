@@ -321,78 +321,102 @@ public:
 
 // Singleton Pattern for Payment Processor
 class PaymentProcessor {
-private:
-    static PaymentProcessor* instance;
-    int nextOrderId;
-    Order orders[10];
-    int orderCount;
+    private:
+        static PaymentProcessor* instance;
+        int nextOrderId;
+        Order orders[10];
+        int orderCount;
     
-    // Private constructor for singleton
-    PaymentProcessor() : nextOrderId(1), orderCount(0) {}
-    
-public:
-    // Get singleton instance
-    static PaymentProcessor* getInstance() {
-        if (instance == nullptr) {
-            instance = new PaymentProcessor();
-        }
-        return instance;
-    }
-    
-    // Process payment and create order
-    Order processPayment(const ShoppingCart& cart, PaymentStrategy* paymentStrategy) {
-        double amount = cart.getTotalAmount();
-        
-        try {
-            bool success = paymentStrategy->processPayment(amount);
-            
-            if (orderCount >= 10) {
-                throw ArrayFullException("Orders database");
+        // Private constructor for singleton
+        PaymentProcessor() : nextOrderId(1), orderCount(0) {
+            ifstream idFile("nextOrderId.txt");
+            if (idFile) {
+                idFile >> nextOrderId;
+                idFile.close();
+            } else {
+                cerr << "Warning: Could not load next order ID from file. Starting from 1." << endl;
             }
-            
-            // Create new order
-            Order order(nextOrderId++, cart.getItems(), cart.getItemCount(), paymentStrategy->getMethodName());
-            orders[orderCount++] = order;
-            
-            // Log the order
-            logOrder(order);
-            
-            return order;
-        } catch (const exception& e) {
-            throw ECommerceException("Payment failed with method: " + paymentStrategy->getMethodName());
         }
-    }
     
-    // Log order to file
-    void logOrder(const Order& order) {
-        try {
-            ofstream logFile("orders.log", ios::app);
-            if (!logFile) {
-                cerr << "Warning: Could not open log file." << endl;
+    public:
+        // Get singleton instance
+        static PaymentProcessor* getInstance() {
+            if (instance == nullptr) {
+                instance = new PaymentProcessor();
+            }
+            return instance;
+        }
+    
+        // Save next order ID to file
+        void saveNextOrderId() {
+            ofstream idFile("nextOrderId.txt");
+            if (!idFile) {
+                cerr << "Warning: Could not save next order ID to file." << endl;
                 return;
             }
-            
-            logFile << "[LOG] -> Order ID: " << order.getOrderId() 
-                    << " has been successfully checked out and paid using " 
-                    << order.getPaymentMethod() << endl;
-            
-            logFile.close();
-        } catch (const exception& e) {
-            cerr << "Warning: Failed to log order: " << e.what() << endl;
+            idFile << nextOrderId;
+            idFile.close();
         }
-    }
     
-    // Get orders
-    const Order* getOrders() const {
-        return orders;
-    }
+        // Destructor to save next order ID
+        ~PaymentProcessor() {
+            saveNextOrderId();
+        }
     
-    // Get order count
-    int getOrderCount() const {
-        return orderCount;
-    }
-};
-
+        // Process payment and create order
+        Order processPayment(const ShoppingCart& cart, PaymentStrategy* paymentStrategy) {
+            double amount = cart.getTotalAmount();
+    
+            try {
+                bool success = paymentStrategy->processPayment(amount);
+    
+                if (orderCount >= 10) {
+                    throw ArrayFullException("Orders database");
+                }
+    
+                // Create new order
+                Order order(nextOrderId++, cart.getItems(), cart.getItemCount(), paymentStrategy->getMethodName());
+                orders[orderCount++] = order;
+    
+                // Log the order
+                logOrder(order);
+    
+                return order;
+            } catch (const exception& e) {
+                throw ECommerceException("Payment failed with method: " + paymentStrategy->getMethodName());
+            }
+        }
+    
+        // Log order to file
+        void logOrder(const Order& order) {
+            try {
+                ofstream logFile("orders.log", ios::app);
+                if (!logFile) {
+                    cerr << "Warning: Could not open log file." << endl;
+                    return;
+                }
+    
+                logFile << "[LOG] -> Order ID: " << order.getOrderId() 
+                        << " has been successfully checked out and paid using " 
+                        << order.getPaymentMethod() << endl;
+    
+                logFile.close();
+            } catch (const exception& e) {
+                cerr << "Warning: Failed to log order: " << e.what() << endl;
+            }
+        }
+    
+        // Get orders
+        const Order* getOrders() const {
+            return orders;
+        }
+    
+        // Get order count
+        int getOrderCount() const {
+            return orderCount;
+        }
+    };
+    
 // Initialize static instance pointer
 PaymentProcessor* PaymentProcessor::instance = nullptr;
 
@@ -614,6 +638,9 @@ public:
 int main() {
     ECommerceSystem system;
     system.run();
-    
+
+    // Save the next order ID before exiting
+    PaymentProcessor::getInstance()->saveNextOrderId();
+
     return 0;
 }
